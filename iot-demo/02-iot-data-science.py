@@ -1,48 +1,109 @@
 # Databricks notebook source
+# DBTITLE 1,Widget creation
 dbutils.widgets.dropdown("reset_all_data", "false", ["true", "false"], "Reset all data")
 
 # COMMAND ----------
 
 # MAGIC %md-sandbox
-# MAGIC #TODO: introduce your data science story!
+# MAGIC #Datascience/Machine Learning
 # MAGIC 
-# MAGIC What are you building here ? What's the value for your customer? What's the value of the Lakehouse here? How Databricks can uniquely help building these capabilities vs using a datawarehouse?
+# MAGIC # Wind Turbine Predictive Maintenance
 # MAGIC 
-# MAGIC Tips: being able to run some kind of classification to predict the status of your gaz turbines might be interesting for MegaCorp
+# MAGIC In this notebook, we demonstrate anomaly detection for the purposes of finding damaged wind turbines. A damaged, single, inactive wind turbine costs energy utility companies thousands of dollars per day in losses.
+# MAGIC 
+# MAGIC 
+# MAGIC Our dataset consists of vibration readings coming off sensors located in the gearboxes of wind turbines. 
+# MAGIC 
+# MAGIC We will use Gradient Boosted Tree Classification to predict which set of vibrations could be indicative of a failure.
+# MAGIC 
+# MAGIC Once the model is trained, we'll use MFLow to track its performance and save it in the registry to deploy it in production
+# MAGIC 
+# MAGIC 
+# MAGIC 
+# MAGIC *Data Source Acknowledgement: This Data Source Provided By NREL*
+# MAGIC 
+# MAGIC *https://www.nrel.gov/docs/fy12osti/54530.pdf*
 
 # COMMAND ----------
 
+# DBTITLE 1,Basic setup - Run this cell for basic setup
 # MAGIC %run ./resources/00-setup $reset_all=$reset_all_data
+
+# COMMAND ----------
+
+# MAGIC %md 
+# MAGIC ## Data Preparation
+# MAGIC ### Ingestion using - Auto Loader 
+# MAGIC Incrementally and efficiently processes new data files as they arrive in cloud storage.
+# MAGIC Provides a Structured Streaming source called cloudFiles. Given an input directory path on the cloud file storage, the cloudFiles source automatically processes new files as they arrive.
+# MAGIC 
+# MAGIC #### Documentation : https://docs.databricks.com/spark/latest/structured-streaming/auto-loader-json.html
+
+# COMMAND ----------
+
+# DBTITLE 1,Ingesting data into ML gold table using  Autoloader
+goldmlDF = (spark.readStream
+                .format("cloudFiles")
+                .option("cloudFiles.format", "parquet")
+                .option("cloudFiles.maxFilesPerTrigger", "1")  #demo only, remove in real stream
+                .option("cloudFiles.schemaLocation", path+"/turbine/gold_ml")
+                .option("rescuedDataColumn", "_rescued")
+                .option("cloudFiles.inferColumnTypes", "true")
+                .load(gold_data_for_ml_path))
+
+goldmlDF.select("ID","AN3","AN4","AN5","AN6","AN7","AN8","AN9","AN10","SPEED","TORQUE","TIMESTAMP", "STATUS") \
+        .writeStream.format("delta") \
+        .trigger(processingTime='10 seconds') \
+        .option("mergeSchema", "true").table(gold_data_for_ml_table)
+
+# COMMAND ----------
+
+# DBTITLE 1,List the number of files - wait until all 15 files are loaded
+# MAGIC %fs ls '/Users/reena.vincy@databricks.com/iot/workshop/tables/turbine_gold_ml'
+
+# COMMAND ----------
+
+# MAGIC 
+# MAGIC %md 
+# MAGIC #### Performance Optimization
+# MAGIC ###### Optimize 
+# MAGIC We can improve the speed of read queries from a table by coalescing small files into larger ones. You can trigger compaction by running the OPTIMIZE command.
+# MAGIC 
+# MAGIC ###### Documentation : https://docs.databricks.com/delta/optimizations/file-mgmt.html
+# MAGIC 
+# MAGIC Note: You can also turn on autocompaction to solve small files issues on your streaming job by setting tblproperties ('delta.autoOptimize.autoCompact' = true, 'delta.autoOptimize.optimizeWrite' = true)
+# MAGIC 
+# MAGIC ###### Documentation : https://docs.databricks.com/spark/latest/spark-sql/language-manual/sql-ref-syntax-ddl-alter-table.html
+
+# COMMAND ----------
+
+# DBTITLE 1,Let us resolve the small files issue
+# MAGIC %sql 
+# MAGIC OPTIMIZE turbine_gold_ml
 
 # COMMAND ----------
 
 # MAGIC %md 
 # MAGIC ## Data Exploration
 # MAGIC What do the distributions of sensor readings look like for our turbines? 
-# MAGIC 
-# MAGIC _Plot as bar charts using `summary` as Keys and all sensor Values_
 
 # COMMAND ----------
 
-#To help you, we've preprared a "turbine_gold_for_ml" table that you can re-use for the DS demo. 
-#It should contain the same information as your own gold table
-dataset = spark.read.table("turbine_gold_for_ml")
+# DBTITLE 1,Display the data
+dataset = spark.read.table(gold_data_for_ml_table)
 display(dataset)
 
+
 # COMMAND ----------
 
-# DBTITLE 1,Visualize Feature Distributions
-#As a DS, our first job is to analyze the data
-#TODO: show some data visualization here
-#Ex: Use sns.pairplot, or show the spark 3.2 pandas integration with visualization integrated to
-
+# DBTITLE 1,Analyze the data
 dbutils.data.summarize(dataset)
 
 # COMMAND ----------
 
-import seaborn as sns
-
-sns.pairplot(dataset.drop("SPEED","TORQUE","status","ID").toPandas())
+# DBTITLE 1,Visualize Feature Distributions
+#dropping unnecessary columns
+sn.pairplot(dataset.drop("SPEED","TORQUE","STATUS","ID","TIMESTAMP").toPandas())
 
 # COMMAND ----------
 
@@ -51,19 +112,8 @@ sns.pairplot(dataset.drop("SPEED","TORQUE","status","ID").toPandas())
 
 # COMMAND ----------
 
-dataset.display()
-
-# COMMAND ----------
-
 #once the data is ready, we can train a model
-import mlflow
-import pandas as pd
-from pyspark.ml import Pipeline
-from pyspark.ml.evaluation import MulticlassClassificationEvaluator, BinaryClassificationEvaluator
-from pyspark.ml.classification import GBTClassifier
-from pyspark.ml.tuning import CrossValidator, ParamGridBuilder
-from pyspark.ml.feature import VectorAssembler, StandardScaler, StringIndexer
-from pyspark.mllib.evaluation import MulticlassMetrics, BinaryClassificationMetrics
+
 
 with mlflow.start_run():
   
@@ -87,6 +137,7 @@ with mlflow.start_run():
   metrics = MulticlassMetrics(predictions.select(['prediction', 'label']).rdd)
   metricsAUROC = ev.evaluate(predictions)
   
+  
   #log your metrics (precision, recall, f1 etc) 
   #Tips: what about auto logging ?
   # mlflow.autolog() --> doesn't collect metrics on spark ML (https://www.mlflow.org/docs/latest/tracking.html#spark)
@@ -103,18 +154,40 @@ with mlflow.start_run():
 
 # COMMAND ----------
 
-# MAGIC %md ## Save to the model registry
-# MAGIC Get the model having the best metrics.AUROC from the registry
+# DBTITLE 1,Show your model's accuracy
+displayHTML("<h3>Model accuracy = {:.2%}</h3>".format(metricsAUROC))
 
 # COMMAND ----------
 
-# DBTITLE 1, Getting the best model and registering
+# DBTITLE 1,Add confusion matrix to the model
+  
+  with TempDir() as tmp_dir:
+    labels = pipelineTrained.stages[2].labels
+    sn.heatmap(pd.DataFrame(metrics.confusionMatrix().toArray()), annot=True, fmt='g', xticklabels=labels, yticklabels=labels)
+    plt.suptitle("Turbine Damage Prediction. F1={:.2f}".format(metrics.fMeasure(1.0)), fontsize = 18)
+    plt.xlabel("Predicted Labels")
+    plt.ylabel("True Labels")
+    plt.savefig(tmp_dir.path()+"/confusion_matrix.png")
+    mlflow.log_artifact(tmp_dir.path()+"/confusion_matrix.png")
+
+# COMMAND ----------
+
+# MAGIC %md ## Save to the model registry
+
+# COMMAND ----------
+
+# DBTITLE 1,Getting the model having the best Accuracy from the registry
 #get the best model from the registry
 
 best_model = mlflow.search_runs(filter_string='tags.model="turbine_gbt" and attributes.status = "FINISHED"', order_by = ['metrics.AUROC DESC'], max_results=1).iloc[0]
+print("Best Model run id : {}".format(best_model.run_id))
+
+# COMMAND ----------
+
+# DBTITLE 1, Registering the best model 
 
 #register the model to MLFLow registry
-model_registered = mlflow.register_model("runs:/"+best_model.run_id+"/turbine_gbt", "iot-model-20220402")
+model_registered = mlflow.register_model("runs:/"+best_model.run_id+"/turbine_gbt", "iot-model")
 
 # COMMAND ----------
 
@@ -148,7 +221,7 @@ client.transition_model_version_stage(
 
 #Load the model from the registry
 from pyspark.sql.functions import struct
-model_udf = mlflow.pyfunc.spark_udf(spark, "models:/iot-model-20220402/Production")
+model_udf = mlflow.pyfunc.spark_udf(spark, "models:/iot-model/Production")
 
 #Define the model as a SQL function to be able to call it in SQL
 spark.udf.register("predict", model_udf)
@@ -161,4 +234,4 @@ display(output_df)
 
 # MAGIC %sql
 # MAGIC --Call the model in SQL using the udf registered as function
-# MAGIC select *, predict(struct(AN3, AN4, AN5, AN6, AN7, AN8, AN9, AN10)) as status_forecast from turbine_gold_for_ml
+# MAGIC select *, predict(struct(AN3, AN4, AN5, AN6, AN7, AN8, AN9, AN10)) as status_forecast from turbine_gold_ml

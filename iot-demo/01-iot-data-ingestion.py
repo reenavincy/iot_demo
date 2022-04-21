@@ -4,7 +4,7 @@ dbutils.widgets.dropdown("reset_all_data", "false", ["true", "false"], "Reset al
 
 # COMMAND ----------
 
-# DBTITLE 1,Basic setup
+# DBTITLE 1,Basic setup - Run this cell for basic setup
 # MAGIC %run ./resources/00-setup $reset_all_data=$reset_all_data
 
 # COMMAND ----------
@@ -54,13 +54,12 @@ dbutils.widgets.dropdown("reset_all_data", "false", ["true", "false"], "Reset al
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 1/ Bronze layer: Ingest  from live Kinesis data stream into Bronze table
+# MAGIC ## 1) Bronze layer: Ingest  from live Kinesis data stream into Bronze table
 
 # COMMAND ----------
 
 # DBTITLE 1,Default path and database all set
 
-#Tips: Python path variable is available, use it to store intermediate data or your checkpoints
 #You need to run the setup cell to have these variable defined: %run ./resources/00-setup $reset_all_data=$reset_all_data
 print(f"path={path}")
 #Just save create the database to the current database, it's been initiliazed locally to your user to avoid conflict
@@ -70,8 +69,7 @@ print(sql("SELECT current_database() AS db").collect()[0]['db'])
 # COMMAND ----------
 
 # DBTITLE 1,Pull live data from Kinesis stream
-aws_region = 'eu-west-1'
-stream_name = 'rvin-iot-2-simulated-iot-data-stream'
+
 
 kinesis_readings = (spark
   .readStream
@@ -91,8 +89,15 @@ kinesis_readings = (spark
  .select('key','value')
  .writeStream
  .queryName("kinesis_bronze_write") 
- .table("turbine_bronze")
+ .table(bronze_table)
 )
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC create table if not exists turbine_bronze
+# MAGIC   using delta
+# MAGIC   location '/mnt/quentin-demo-resources//turbine/bronze/data'
 
 # COMMAND ----------
 
@@ -103,32 +108,8 @@ kinesis_readings = (spark
 
 # COMMAND ----------
 
-# DBTITLE 1,Let us understand the Bronze Delta table format
-# MAGIC %sql
-# MAGIC DESCRIBE FORMATTED turbine_bronze 
-
-# COMMAND ----------
-
 # MAGIC %md
-# MAGIC ## Documentation : https://docs.databricks.com/spark/latest/spark-sql/language-manual/sql-ref-syntax-ddl-alter-table.html
-
-# COMMAND ----------
-
-# DBTITLE 1,Let us resolve the small files issue
-# MAGIC %sql
-# MAGIC 
-# MAGIC ALTER TABLE turbine_bronze SET TBLPROPERTIES (delta.autoOptimize.optimizeWrite = true, delta.autoOptimize.autoCompact = true)
-
-# COMMAND ----------
-
-# DBTITLE 1,Let us understand the Bronze Delta table format again and check Table Properties
-# MAGIC %sql
-# MAGIC DESCRIBE FORMATTED turbine_bronze 
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 2/ Silver layer: Transform JSON data into tabular table and cleanse data
+# MAGIC ## 2) Silver layer: Transform JSON data into tabular data and cleanse data
 
 # COMMAND ----------
 
@@ -137,7 +118,7 @@ from pyspark.sql.types import StructType,StructField, StringType, DoubleType, Ti
 
 jsonSchema = StructType([StructField(col, DoubleType(), False) for col in ["AN3", "AN4", "AN5", "AN6", "AN7", "AN8", "AN9", "AN10", "SPEED", "TORQUE", "ID"]] + [StructField("TIMESTAMP", TimestampType())])
 
-silver_df = spark.readStream.table('turbine_bronze') \
+silver_df = spark.readStream.table(bronze_table) \
      .withColumn("jsonData", from_json(col("value"), jsonSchema)) \
      .select("jsonData.*").drop('TORQUE').filter("ID IS NOT NULL") \
      .writeStream \
@@ -145,7 +126,7 @@ silver_df = spark.readStream.table('turbine_bronze') \
      .format("delta") \
      .queryName("silver_write") \
      .trigger(processingTime='2 seconds') \
-     .table("turbine_silver")
+     .table(silver_table)
                 
 
 # COMMAND ----------
@@ -162,14 +143,8 @@ silver_df = spark.readStream.table('turbine_bronze') \
 
 # COMMAND ----------
 
-# DBTITLE 1,Different variations of  displaying turbine status data
-spark.read.format("parquet").load("/mnt/iot-demo-resources/turbine/status").display()
-
-# COMMAND ----------
-
-# DBTITLE 1,Different variations of  displaying turbine status data
-# MAGIC %sql
-# MAGIC select * from parquet.`/mnt/iot-demo-resources/turbine/status`;
+# DBTITLE 1,Displaying turbine status data
+spark.read.format("parquet").load(status_data_path).display()
 
 # COMMAND ----------
 
@@ -187,7 +162,7 @@ spark.read.format("parquet").load("/mnt/iot-demo-resources/turbine/status").disp
 # MAGIC (ID int, STATUS string)
 # MAGIC USING DELTA;
 # MAGIC 
-# MAGIC COPY INTO turbine_status FROM '/mnt/iot-demo-resources/turbine/status'
+# MAGIC COPY INTO turbine_status FROM '/mnt/iot-workshop-resources/turbine/status'
 # MAGIC FILEFORMAT = PARQUET
 
 # COMMAND ----------
@@ -199,17 +174,17 @@ spark.read.format("parquet").load("/mnt/iot-demo-resources/turbine/status").disp
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 3/ Gold layer: join information on Turbine status to add a label to our dataset
+# MAGIC ## 3) Gold layer: join information on Turbine status to add a label to our dataset
 
 # COMMAND ----------
 
 # DBTITLE 1,Join data with turbine status (Damaged or Healthy)
 #Left join between turbine_stream and turbine_status on the 'id' key and save back the result as the "turbine_gold" table
-#.option("checkpointLocation", path+"/turbine/gold/gold_checkpoint_demo3").
-turbine_stream = spark.readStream.table('turbine_silver')
-turbine_status = spark.read.table("turbine_status")
+
+turbine_stream = spark.readStream.table(silver_table)
+turbine_status = spark.read.table(status_table)
 turbine_gold = (turbine_stream.join(turbine_status, turbine_stream.ID == turbine_status.ID, 'left')).drop(turbine_status.ID)
-turbine_gold.writeStream.format("delta").option("mergeSchema", "true").table("turbine_gold")
+turbine_gold.writeStream.format("delta").option("mergeSchema", "true").table(gold_table)
 
 # COMMAND ----------
 
@@ -238,13 +213,13 @@ turbine_gold.writeStream.format("delta").option("mergeSchema", "true").table("tu
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC Select count(*) from turbine_gold where timestamp < '2022-04-02'
+# MAGIC Select count(*) from turbine_gold where ID = 500
 
 # COMMAND ----------
 
 # DBTITLE 1,DELETE -Suppose we discover an issue with data timestamped < 2022-04-02
 # MAGIC %sql
-# MAGIC DELETE FROM turbine_gold where timestamp < '2022-04-02'
+# MAGIC DELETE FROM turbine_gold where ID = 500
 
 # COMMAND ----------
 
@@ -253,28 +228,28 @@ turbine_gold.writeStream.format("delta").option("mergeSchema", "true").table("tu
 
 # COMMAND ----------
 
+# DBTITLE 1,We can travel back in time if the DELETE was accidental
 # MAGIC %sql
-# MAGIC select min(timestamp), max(timestamp) from turbine_gold
+# MAGIC select count(*) from turbine_gold where ID=500
 
 # COMMAND ----------
 
-# DBTITLE 1,We can travel back in time if the DELETE was accidental
 # MAGIC %sql
-# MAGIC select min(timestamp), max(timestamp) from turbine_gold TIMESTAMP AS OF '2022-04-02T06:09:00.000+0000'
+# MAGIC select count(*) from turbine_gold  VERSION AS OF 1 where ID=500
 
 # COMMAND ----------
 
 # DBTITLE 1,We can restore previous version
 # MAGIC %sql
 # MAGIC MERGE INTO turbine_gold
-# MAGIC USING turbine_gold VERSION AS OF 56 AS restore_version
+# MAGIC USING turbine_gold VERSION AS OF 1 AS restore_version
 # MAGIC ON turbine_gold.id=restore_version.id AND turbine_gold.timestamp=restore_version.timestamp
 # MAGIC WHEN NOT MATCHED THEN INSERT *
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC select min(timestamp), max(timestamp) from turbine_gold
+# MAGIC select count(*) from turbine_gold where ID=500
 
 # COMMAND ----------
 
@@ -287,21 +262,21 @@ turbine_gold.writeStream.format("delta").option("mergeSchema", "true").table("tu
 # DBTITLE 1,Before Update value
 # MAGIC %sql
 # MAGIC 
-# MAGIC SELECT ID,STATUS FROM turbine_gold where ID=550;
+# MAGIC SELECT ID,STATUS FROM turbine_gold where ID=300;
 
 # COMMAND ----------
 
 # DBTITLE 1,UPDATE
 # MAGIC %sql
 # MAGIC 
-# MAGIC UPDATE turbine_gold SET STATUS ='healthy' where ID=550
+# MAGIC UPDATE turbine_gold SET STATUS ='damaged' where ID=300
 
 # COMMAND ----------
 
 # DBTITLE 1,After Update value
 # MAGIC %sql
 # MAGIC 
-# MAGIC SELECT ID,STATUS FROM turbine_gold where ID=550;
+# MAGIC SELECT ID,STATUS FROM turbine_gold where ID=300;
 
 # COMMAND ----------
 
@@ -318,17 +293,17 @@ turbine_gold.writeStream.format("delta").option("mergeSchema", "true").table("tu
 
 # DBTITLE 1,Perform Time Travel  before and after UPDATE
 # MAGIC %sql
-# MAGIC SELECT ID,STATUS from turbine_gold VERSION AS OF 171 where ID=550
+# MAGIC SELECT ID,STATUS from turbine_gold VERSION AS OF 4 where ID=300
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC SELECT ID,STATUS from turbine_gold VERSION AS OF 172 where ID=550
+# MAGIC SELECT ID,STATUS from turbine_gold VERSION AS OF 3 where ID=300
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC SELECT ID,STATUS from turbine_gold where ID=550
+# MAGIC SELECT ID,STATUS from turbine_gold where ID=300
 
 # COMMAND ----------
 
