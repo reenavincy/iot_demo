@@ -51,15 +51,15 @@ goldmlDF = (spark.readStream
                 .option("cloudFiles.inferColumnTypes", "true")
                 .load(gold_data_for_ml_path))
 
-goldmlDF.select("ID","AN3","AN4","AN5","AN6","AN7","AN8","AN9","AN10","SPEED","TORQUE","TIMESTAMP", "STATUS") \
+goldmlDF.select("ID","AN3","AN4","AN5","AN6","AN7","AN8","AN9","AN10","SPEED","TIMESTAMP", "STATUS") \
         .writeStream.format("delta") \
         .trigger(processingTime='10 seconds') \
         .option("mergeSchema", "true").table(gold_data_for_ml_table)
 
 # COMMAND ----------
 
-# DBTITLE 1,List the number of files - wait until all 15 files are loaded
-# MAGIC %fs ls '/Users/reena.vincy@databricks.com/iot/workshop/tables/turbine_gold_ml'
+# DBTITLE 1,List the number of files - wait until all files are loaded
+dbutils.fs.ls (path+'/workshop/tables/turbine_gold_ml')
 
 # COMMAND ----------
 
@@ -103,7 +103,7 @@ dbutils.data.summarize(dataset)
 
 # DBTITLE 1,Visualize Feature Distributions
 #dropping unnecessary columns
-sn.pairplot(dataset.drop("SPEED","TORQUE","STATUS","ID","TIMESTAMP").toPandas())
+sn.pairplot(dataset.drop("SPEED","STATUS","ID","TIMESTAMP").toPandas())
 
 # COMMAND ----------
 

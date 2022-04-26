@@ -94,13 +94,6 @@ kinesis_readings = (spark
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC create table if not exists turbine_bronze
-# MAGIC   using delta
-# MAGIC   location '/mnt/quentin-demo-resources//turbine/bronze/data'
-
-# COMMAND ----------
-
 # DBTITLE 1,Raw data is now available in Bronze Delta table
 # MAGIC %sql
 # MAGIC 
@@ -304,6 +297,11 @@ turbine_gold.writeStream.format("delta").option("mergeSchema", "true").table(gol
 
 # MAGIC %sql
 # MAGIC SELECT ID,STATUS from turbine_gold where ID=300
+
+# COMMAND ----------
+
+# MAGIC %sql 
+# MAGIC select * from turbine_gold
 
 # COMMAND ----------
 

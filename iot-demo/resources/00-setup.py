@@ -6,6 +6,7 @@ dbutils.widgets.dropdown("reset_all_data", "false", ["true", "false"], "Reset al
 # DBTITLE 1,Package imports
 import re
 from pyspark.sql.functions import from_json, col
+from pyspark.sql.types import *
 
 #ML import
 import seaborn as sn
