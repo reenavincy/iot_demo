@@ -154,11 +154,6 @@ with mlflow.start_run():
 
 # COMMAND ----------
 
-# DBTITLE 1,Show your model's accuracy
-displayHTML("<h3>Model accuracy = {:.2%}</h3>".format(metricsAUROC))
-
-# COMMAND ----------
-
 # DBTITLE 1,Add confusion matrix to the model
   
   with TempDir() as tmp_dir:
