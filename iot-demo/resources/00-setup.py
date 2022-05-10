@@ -24,14 +24,14 @@ import matplotlib.pyplot as plt
 # COMMAND ----------
 
 # DBTITLE 1,Mount S3 bucket containing sensor data
-#aws_bucket_name = "iot-workshop-resources"
-#mount_name = "iot-workshop-resources"
+aws_bucket_name = "iot-workshop-resources"
+mount_name = "iot-workshop-resources"
 
-#try:
-  #dbutils.fs.ls("/mnt/%s" % mount_name)
-#except:
-  #print("bucket isn't mounted, mounting the demo bucket under %s" % mount_name)
-  #dbutils.fs.mount("s3a://%s" % aws_bucket_name, "/mnt/%s" % mount_name)
+try:
+  dbutils.fs.ls("/mnt/%s" % mount_name)
+except:
+  print("bucket isn't mounted, mounting the demo bucket under %s" % mount_name)
+  dbutils.fs.mount("s3a://%s" % aws_bucket_name, "/mnt/%s" % mount_name)
 
 
 # COMMAND ----------
