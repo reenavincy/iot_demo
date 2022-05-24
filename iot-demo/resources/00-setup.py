@@ -24,7 +24,8 @@ import matplotlib.pyplot as plt
 # COMMAND ----------
 
 # DBTITLE 1,Mount S3 bucket containing sensor data
-aws_bucket_name = "iot-workshop-resources"
+# Define the values for the below variables, ensure the aws_bucket_name variable's value matches with your s3 bucket name in your AWS account
+aws_bucket_name = "<SPECIFY_YOUR_AWS_ACCOUNT_ID>-iot-workshop-resources"
 mount_name = "iot-workshop-resources"
 
 try:
@@ -63,7 +64,7 @@ print("dbName (using database): {}".format(dbName))
 # COMMAND ----------
 
 # DBTITLE 1,Create Kinesis Stream Variables
-# Define the values for the below variable
+# Define the values for the below variables, aws_region variable's value  and stream_name variable's value matches with your AWS region and Kinesis stream name in your AWS account
 aws_region = 'eu-west-1'
 stream_name = 'simulated-iot-data-stream'
 print("Kinesis Stream variables:")
@@ -74,7 +75,7 @@ print("Kinesis Stream name: {}".format(stream_name))
 
 # DBTITLE 1,Reset tables in user's database
 tables = ["turbine_bronze", "turbine_silver", "turbine_gold", "turbine_gold_ml"]
-#or any([not spark.catalog._jcatalog.tableExists(table) for table in ["turbine_power"]])
+
 reset_all = dbutils.widgets.get("reset_all_data") == "true"
 if reset_all:
   print("Received value for resetting all data as: {}".format(reset_all))
