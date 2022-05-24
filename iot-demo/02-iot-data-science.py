@@ -58,7 +58,7 @@ goldmlDF.select("ID","AN3","AN4","AN5","AN6","AN7","AN8","AN9","AN10","SPEED","T
 
 # COMMAND ----------
 
-# DBTITLE 1,List the number of files - wait until all files are loaded
+# DBTITLE 1,List the number of files - wait until all  7 files are loaded
 dbutils.fs.ls (path+'/workshop/tables/turbine_gold_ml')
 
 # COMMAND ----------
