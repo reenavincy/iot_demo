@@ -45,8 +45,6 @@ dbutils.widgets.dropdown("reset_all_data", "false", ["true", "false"], "Reset al
 # MAGIC * **BATCH and STREAMING** support
 # MAGIC * **Data quality** (Schema Enforcement, Inference and Evolution)
 # MAGIC * **TIME TRAVEL** (Look back on how data looked like in the past)
-# MAGIC 
-# MAGIC ### Documentation : https://docs.databricks.com/delta/index.html
 
 # COMMAND ----------
 
@@ -100,7 +98,7 @@ kinesis_readings = (spark
 # MAGIC <br/>
 # MAGIC 
 # MAGIC 
-# MAGIC ###Documentation : https://docs.databricks.com/spark/latest/structured-streaming/kinesis.html
+# MAGIC ### Documentation : https://docs.databricks.com/delta/index.html
 
 # COMMAND ----------
 
