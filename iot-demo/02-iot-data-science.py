@@ -20,9 +20,7 @@ dbutils.widgets.dropdown("reset_all_data", "false", ["true", "false"], "Reset al
 # MAGIC 
 # MAGIC 
 # MAGIC 
-# MAGIC *Data Source Acknowledgement: This Data Source Provided By NREL*
-# MAGIC 
-# MAGIC *https://www.nrel.gov/docs/fy12osti/54530.pdf*
+# MAGIC *Data Source Acknowledgement: Trainig data was synthesised based on NREL Source Data*
 
 # COMMAND ----------
 
